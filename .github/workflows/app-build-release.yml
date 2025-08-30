@@ -53,64 +53,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Verificar existência do app
-        id: check-app
-        run: |
-          if [ ! -d "app-${{ needs.extract-app-info.outputs.app_name }}" ]; then
-            echo "Aplicativo app-${{ needs.extract-app-info.outputs.app_name }} não encontrado!"
-            exit 1
-          fi
-          echo "app_dir=app-${{ needs.extract-app-info.outputs.app_name }}" >> $GITHUB_OUTPUT
-
-      - name: Detectar tipo de app
-        id: detect-app-type
-        run: |
-          APP_DIR="${{ steps.check-app.outputs.app_dir }}"
-          if [ -f "$APP_DIR/package.json" ]; then
-            echo "app_type=node" >> $GITHUB_OUTPUT
-          elif [ -f "$APP_DIR/go.mod" ]; then
-            echo "app_type=go" >> $GITHUB_OUTPUT
-          else
-            echo "app_type=unknown" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Setup Node.js
-        if: steps.detect-app-type.outputs.app_type == 'node'
-        uses: actions/setup-node@v3
-        with:
-          node-version: "18"
-          cache: "npm"
-          cache-dependency-path: ${{ steps.check-app.outputs.app_dir }}/package-lock.json
-
-      - name: Setup Go
-        if: steps.detect-app-type.outputs.app_type == 'go'
-        uses: actions/setup-go@v4
-        with:
-          go-version: "1.21"
-          cache: true
-          cache-dependency-path: ${{ steps.check-app.outputs.app_dir }}/go.sum
-
-      - name: Build Node.js app
-        if: steps.detect-app-type.outputs.app_type == 'node'
-        run: |
-          cd ${{ steps.check-app.outputs.app_dir }}
-          npm ci
-          npm run build
-
-          # Atualizar versão no package.json
-          npm version ${{ needs.extract-app-info.outputs.version }} --no-git-tag-version
-
-      - name: Build Go app
-        if: steps.detect-app-type.outputs.app_type == 'go'
-        run: |
-          cd ${{ steps.check-app.outputs.app_dir }}
-          mkdir -p dist
-          go build -o dist/ ./...
-
       - name: Run build script
-        if: steps.detect-app-type.outputs.app_type == 'unknown'
         run: |
-          cd ${{ steps.check-app.outputs.app_dir }}
           if [ -f "build.sh" ]; then
             chmod +x build.sh
             ./build.sh
