@@ -60,3 +60,8 @@ jobs:
           body: "Build gerado automaticamente for ${{ github.ref }}"
           artifacts: "${{ steps.create_zip.outputs.zip_file }}"
           token: ${{ secrets.GITHUB_TOKEN }}
+          # Permitir atualizar release existente se a tag já existir
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: true
+          generateReleaseNotes: false
