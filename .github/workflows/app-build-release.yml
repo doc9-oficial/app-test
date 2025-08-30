@@ -1,0 +1,145 @@
+name: Build and Release App
+
+on:
+  push:
+    tags:
+      - "app-*@*" # Formato para tags: app-nome@versão (ex: app-slack@1.0.0)
+    branches:
+      - main # Para atualizações no pipeline
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: "Aplicativo de Teste"
+        required: true
+        type: string
+      version:
+        description: "0.0.1"
+        required: true
+        type: string
+      prerelease:
+        description: "É uma pré-release?"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  extract-app-info:
+    runs-on: ubuntu-latest
+    outputs:
+      app_name: ${{ steps.extract-info.outputs.app_name }}
+      version: ${{ steps.extract-info.outputs.version }}
+      prerelease: ${{ steps.extract-info.outputs.prerelease || github.event.inputs.prerelease }}
+    steps:
+      - id: extract-info
+        run: |
+          # Se disparado por tag, extrair informações da tag
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            TAG="${{ github.ref_name }}"
+            APP_NAME=$(echo $TAG | cut -d '@' -f 1 | sed 's/^app-//')
+            VERSION=$(echo $TAG | cut -d '@' -f 2)
+            echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+          else
+            # Caso seja workflow_dispatch
+            echo "app_name=${{ github.event.inputs.app_name }}" >> $GITHUB_OUTPUT
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          fi
+
+  build-and-release:
+    needs: extract-app-info
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Verificar existência do app
+        id: check-app
+        run: |
+          if [ ! -d "app-${{ needs.extract-app-info.outputs.app_name }}" ]; then
+            echo "Aplicativo app-${{ needs.extract-app-info.outputs.app_name }} não encontrado!"
+            exit 1
+          fi
+          echo "app_dir=app-${{ needs.extract-app-info.outputs.app_name }}" >> $GITHUB_OUTPUT
+
+      - name: Detectar tipo de app
+        id: detect-app-type
+        run: |
+          APP_DIR="${{ steps.check-app.outputs.app_dir }}"
+          if [ -f "$APP_DIR/package.json" ]; then
+            echo "app_type=node" >> $GITHUB_OUTPUT
+          elif [ -f "$APP_DIR/go.mod" ]; then
+            echo "app_type=go" >> $GITHUB_OUTPUT
+          else
+            echo "app_type=unknown" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Node.js
+        if: steps.detect-app-type.outputs.app_type == 'node'
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: ${{ steps.check-app.outputs.app_dir }}/package-lock.json
+
+      - name: Setup Go
+        if: steps.detect-app-type.outputs.app_type == 'go'
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.21"
+          cache: true
+          cache-dependency-path: ${{ steps.check-app.outputs.app_dir }}/go.sum
+
+      - name: Build Node.js app
+        if: steps.detect-app-type.outputs.app_type == 'node'
+        run: |
+          cd ${{ steps.check-app.outputs.app_dir }}
+          npm ci
+          npm run build
+
+          # Atualizar versão no package.json
+          npm version ${{ needs.extract-app-info.outputs.version }} --no-git-tag-version
+
+      - name: Build Go app
+        if: steps.detect-app-type.outputs.app_type == 'go'
+        run: |
+          cd ${{ steps.check-app.outputs.app_dir }}
+          mkdir -p dist
+          go build -o dist/ ./...
+
+      - name: Run build script
+        if: steps.detect-app-type.outputs.app_type == 'unknown'
+        run: |
+          cd ${{ steps.check-app.outputs.app_dir }}
+          if [ -f "build.sh" ]; then
+            chmod +x build.sh
+            ./build.sh
+          else
+            echo "Nenhum método de build encontrado!"
+            exit 1
+          fi
+
+      - name: Verificar se dist existe
+        run: |
+          if [ ! -d "${{ steps.check-app.outputs.app_dir }}/dist" ]; then
+            echo "Diretório dist não foi criado após o build!"
+            exit 1
+          fi
+
+      - name: Criar arquivo zip
+        run: |
+          cd ${{ steps.check-app.outputs.app_dir }}
+          mkdir -p ../release
+          zip -r ../release/app-${{ needs.extract-app-info.outputs.app_name }}-${{ needs.extract-app-info.outputs.version }}.zip dist manifest.json README.md
+
+      - name: Criar release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "app-${{ needs.extract-app-info.outputs.app_name }} v${{ needs.extract-app-info.outputs.version }}"
+          tag_name: "app-${{ needs.extract-app-info.outputs.app_name }}@${{ needs.extract-app-info.outputs.version }}"
+          generate_release_notes: true
+          prerelease: ${{ needs.extract-app-info.outputs.prerelease == 'true' }}
+          files: |
+            release/app-${{ needs.extract-app-info.outputs.app_name }}-${{ needs.extract-app-info.outputs.version }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
