@@ -82,9 +82,7 @@ jobs:
 
           git add manifest.json
           git commit -m "Atualizar versão para $VERSION [skip ci]"
-          git push
-
-      # For manual workflow runs
+          git push      # For manual workflow runs
       - name: Criar tag automática (se necessário)
         if: github.event.inputs.create_tag == 'true' && github.event_name == 'workflow_dispatch'
         run: |
@@ -134,6 +132,29 @@ jobs:
           body: ${{ steps.tag_version.outputs.changelog }}
           artifacts: "${{ steps.create_zip.outputs.zip_file }}"
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Atualizar tag latest após nova release
+      - name: Atualizar tag latest
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.tag_version.outputs.new_tag != ''
+        run: |
+          # Cria ou atualiza a tag latest
+          git tag -f latest
+          git push -f origin latest
+          echo "Tag 'latest' atualizada para apontar para a versão mais recente"
+
+      # Criar release latest
+      - name: Criar/atualizar release latest
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.tag_version.outputs.new_tag != ''
+        uses: ncipollo/release-action@v1
+        with:
+          tag: "latest"
+          name: "${{ steps.manifest.outputs.app_name }} (Latest)"
+          body: "Última versão estável: ${{ steps.tag_version.outputs.new_tag }}\n\n${{ steps.tag_version.outputs.changelog }}"
+          artifacts: "${{ steps.create_zip.outputs.zip_file }}"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: true
 
       # Criar release para tags existentes ou criadas manualmente
       - name: Criar release para tag existente
