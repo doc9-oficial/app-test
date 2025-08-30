@@ -100,11 +100,15 @@ jobs:
         id: create_zip
         run: |
           # Usa dados do manifest ou da tag
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            # Se foi disparado por uma tag, usa a tag completa (ex: v1.2.0) para o nome do ZIP
+          # Priorizar a tag criada pelo passo de bump (quando presente)
+          if [[ -n "${{ steps.tag_version.outputs.new_tag }}" ]]; then
+            TAG="${{ steps.tag_version.outputs.new_tag }}"
+            ZIP_TAG="${TAG}"
+            VERSION="${TAG#v}"
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+            # Se foi disparado por uma tag manual, usa a tag completa (ex: v1.2.0)
             TAG="${{ github.ref_name }}"
             ZIP_TAG="${TAG}"
-            # Versão sem o 'v' para outros usos se necessário
             VERSION="${TAG#v}"
           else
             # Usa a versão do manifest
