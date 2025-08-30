@@ -101,18 +101,21 @@ jobs:
         run: |
           # Usa dados do manifest ou da tag
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            # Se foi disparado por uma tag, extrair a versão da tag
+            # Se foi disparado por uma tag, usa a tag completa (ex: v1.2.0) para o nome do ZIP
             TAG="${{ github.ref_name }}"
-            VERSION=${TAG#v}
+            ZIP_TAG="${TAG}"
+            # Versão sem o 'v' para outros usos se necessário
+            VERSION="${TAG#v}"
           else
             # Usa a versão do manifest
             VERSION="${{ steps.manifest.outputs.version }}"
+            ZIP_TAG="${VERSION}"
           fi
 
           APP_NAME="${{ steps.manifest.outputs.app_name }}"
-          ZIP_NAME="app-$APP_NAME-$VERSION.zip"
+          ZIP_NAME="app-${APP_NAME}-${ZIP_TAG}.zip"
 
-          echo "Criando ZIP para $APP_NAME versão $VERSION"
+          echo "Criando ZIP para $APP_NAME versão $ZIP_TAG"
           zip -r "$ZIP_NAME" dist manifest.json README.md
 
           # Salva nome do arquivo para uso posterior
