@@ -3,25 +3,10 @@ name: Build e Release App
 on:
   push:
     branches:
-      - main # Executa em cada push na branch main
+      - main
     tags:
-      - "v*" # Também dispara em tags como v1.0.0
+      - "v*"
   workflow_dispatch:
-    inputs:
-      create_tag:
-        description: "Criar tag com versão do manifest?"
-        required: false
-        default: false
-        type: boolean
-      bump_type:
-        description: "Tipo de incremento de versão (patch, minor, major)"
-        required: false
-        default: "patch"
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
 
 jobs:
   release:
@@ -37,60 +22,12 @@ jobs:
       - name: Extrair dados do manifest
         id: manifest
         run: |
-          # Extrai nome e versão do manifest.json usando jq
           APP_NAME=$(jq -r '.name' manifest.json)
           VERSION=$(jq -r '.version' manifest.json)
-
           echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Dados extraídos do manifest: Nome=$APP_NAME, Versão=$VERSION"
 
       # Increment version, create tag and generate changelog when pushing to main
-      - name: Bump version e criar tag
-        id: tag_version
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: mathieudutour/github-tag-action@v5.6
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          default_bump: ${{ github.event.inputs.bump_type || 'patch' }}
-          fetch_all_tags: true
-
-      # Update version in manifest.json when pushing to main
-      - name: Atualizar versão no manifest.json
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.tag_version.outputs.new_tag != ''
-        run: |
-          NEW_VERSION="${{ steps.tag_version.outputs.new_version }}"
-          echo "Atualizando versão no manifest.json para $NEW_VERSION"
-
-          # Atualiza a versão no manifest.json
-          jq ".version = \"$NEW_VERSION\"" manifest.json > manifest.json.tmp
-          mv manifest.json.tmp manifest.json
-
-          echo "VERSION=$NEW_VERSION" >> $GITHUB_ENV
-
-      # Commit manifest.json changes back to the repository
-      - name: Commit e push da nova versão
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.tag_version.outputs.new_tag != ''
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git config --global user.email "action@github.com"
-          git config --global user.name "GitHub Action"
-
-          # Usa token no remote
-          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}
-
-          git add manifest.json
-          git commit -m "Atualizar versão para $VERSION [skip ci]"
-          git push      # For manual workflow runs
-      - name: Criar tag automática (se necessário)
-        if: github.event.inputs.create_tag == 'true' && github.event_name == 'workflow_dispatch'
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git tag -a "v${{ steps.manifest.outputs.version }}" -m "Release v${{ steps.manifest.outputs.version }}"
-          git push origin "v${{ steps.manifest.outputs.version }}"
-
       - name: Build
         run: |
           chmod +x build.sh
@@ -99,76 +36,27 @@ jobs:
       - name: Criar ZIP e fazer upload
         id: create_zip
         run: |
-          # Usa dados do manifest ou da tag
-          # Priorizar a tag criada pelo passo de bump (quando presente)
-          if [[ -n "${{ steps.tag_version.outputs.new_tag }}" ]]; then
-            TAG="${{ steps.tag_version.outputs.new_tag }}"
-            ZIP_TAG="${TAG}"
-            VERSION="${TAG#v}"
-          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
-            # Se foi disparado por uma tag manual, usa a tag completa (ex: v1.2.0)
-            TAG="${{ github.ref_name }}"
-            ZIP_TAG="${TAG}"
-            VERSION="${TAG#v}"
-          else
-            # Usa a versão do manifest
-            VERSION="${{ steps.manifest.outputs.version }}"
-            ZIP_TAG="${VERSION}"
-          fi
-
+          # Usa a versão do manifest como fallback
           APP_NAME="${{ steps.manifest.outputs.app_name }}"
-          ZIP_NAME="app-${APP_NAME}-${ZIP_TAG}.zip"
-
-          echo "Criando ZIP para $APP_NAME versão $ZIP_TAG"
-          zip -r "$ZIP_NAME" dist manifest.json README.md
-
-          # Salva nome do arquivo para uso posterior
+          VERSION="${{ steps.manifest.outputs.version }}"
+          # Se o workflow foi disparado por uma tag, extrai o número sem o 'v' inicial
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            # shell substitution para remover leading 'v' se presente
+            REF_NAME="${GITHUB_REF_NAME:-${{ github.ref_name }}}"
+            VERSION="${REF_NAME#v}"
+          fi
+          ZIP_NAME="app-${APP_NAME}-${VERSION}.zip"
+          echo "Criando ZIP para $APP_NAME versão $VERSION"
+          zip -r "$ZIP_NAME" dist manifest.json README.md || true
           echo "zip_file=$ZIP_NAME" >> $GITHUB_OUTPUT
 
-          # Exibe informações para debug
-          ls -la
-          echo "Arquivo ZIP criado: $ZIP_NAME"
-
       # Criar release quando a versão é incrementada automaticamente
-      - name: Criar release para nova versão
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.tag_version.outputs.new_tag != ''
+      - name: Criar release (tags) ou upload (main)
+        if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
         uses: ncipollo/release-action@v1
         with:
-          tag: ${{ steps.tag_version.outputs.new_tag }}
-          name: "${{ steps.manifest.outputs.app_name }} ${{ steps.tag_version.outputs.new_tag }}"
-          body: ${{ steps.tag_version.outputs.changelog }}
-          artifacts: "${{ steps.create_zip.outputs.zip_file }}"
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      # Atualizar tag latest após nova release
-      - name: Atualizar tag latest
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.tag_version.outputs.new_tag != ''
-        run: |
-          # Cria ou atualiza a tag latest
-          git tag -f latest
-          git push -f origin latest
-          echo "Tag 'latest' atualizada para apontar para a versão mais recente"
-
-      # Criar release latest
-      - name: Criar/atualizar release latest
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.tag_version.outputs.new_tag != ''
-        uses: ncipollo/release-action@v1
-        with:
-          tag: "latest"
-          name: "${{ steps.manifest.outputs.app_name }} (Latest)"
-          body: "Última versão estável: ${{ steps.tag_version.outputs.new_tag }}\n\n${{ steps.tag_version.outputs.changelog }}"
-          artifacts: "${{ steps.create_zip.outputs.zip_file }}"
-          token: ${{ secrets.GITHUB_TOKEN }}
-          allowUpdates: true
-          replacesArtifacts: true
-          makeLatest: true
-
-      # Criar release para tags existentes ou criadas manualmente
-      - name: Criar release para tag existente
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: ncipollo/release-action@v1
-        with:
-          name: "${{ steps.manifest.outputs.app_name }} ${{ github.ref_name }}"
-          body: "Release criada manualmente para a tag ${{ github.ref_name }}"
+          tag: ${{ github.ref_name != '' && startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}
+          name: "${{ steps.manifest.outputs.app_name }} ${{ github.ref_name != '' && startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}"
+          body: "Build gerado automaticamente for ${{ github.ref }}"
           artifacts: "${{ steps.create_zip.outputs.zip_file }}"
           token: ${{ secrets.GITHUB_TOKEN }}
