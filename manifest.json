@@ -1,46 +1,46 @@
 {
-    "name": "test",
-    "version": "1.0.1",
-    "description": "Aplicação simples para soma de n argumentos",
-    "functions": {
-        "soma": {
-            "script": "dist/soma.js",
-            "description": "Soma n números fornecidos como argumentos",
-            "parameters": [
-                {
-                    "name": "numeros",
-                    "type": "array",
-                    "required": true,
-                    "description": "Lista de números para serem somados"
-                }
-            ],
-            "mcp": {
-                "name": "somar_numeros",
-                "description": "Sum multiple numbers provided as arguments",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "numeros": {
-                            "type": "array",
-                            "items": {
-                                "type": "number"
-                            },
-                            "description": "List of numbers to be summed"
-                        }
-                    },
-                    "required": [
-                        "numeros"
-                    ]
-                }
-            }
+  "name": "test",
+  "version": "1.0.2",
+  "description": "Aplicação simples para soma de n argumentos",
+  "functions": {
+    "soma": {
+      "script": "dist/soma.js",
+      "description": "Soma n números fornecidos como argumentos",
+      "parameters": [
+        {
+          "name": "numeros",
+          "type": "array",
+          "required": true,
+          "description": "Lista de números para serem somados"
         }
-    },
-    "variables": {
-        "timeout": "30000",
-        "max_retries": "3"
-    },
-    "mcp": {
-        "enabled": true,
-        "tools": []
+      ],
+      "mcp": {
+        "name": "somar_numeros",
+        "description": "Sum multiple numbers provided as arguments",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "numeros": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "description": "List of numbers to be summed"
+            }
+          },
+          "required": [
+            "numeros"
+          ]
+        }
+      }
     }
+  },
+  "variables": {
+    "timeout": "30000",
+    "max_retries": "3"
+  },
+  "mcp": {
+    "enabled": true,
+    "tools": []
+  }
 }
