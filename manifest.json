@@ -6,10 +6,25 @@
     "soma": {
       "script": "dist/soma.js",
       "description": "Soma n números fornecidos como argumentos",
+      "category": "util",
+      "values": {
+        "numeros": [
+          1,
+          2,
+          3
+        ]
+      },
+      "help": {
+        "title": "Como usar a função soma",
+        "body": "Use esta função para somar múltiplos números fornecidos como uma lista. Forneça uma lista de números como argumento obrigatório.",
+        "footer": "",
+        "link": ""
+      },
       "parameters": [
         {
           "name": "numeros",
           "type": "array",
+          "inputType": "text",
           "required": true,
           "description": "Lista de números para serem somados"
         }
