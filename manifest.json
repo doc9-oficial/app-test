@@ -4,6 +4,7 @@
   "description": "Aplicação simples para soma de n argumentos",
   "functions": {
     "soma": {
+      "name": "Soma - Test",
       "script": "dist/soma.js",
       "description": "Soma n números fornecidos como argumentos",
       "category": "util",
